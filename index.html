@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Notas</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <main class="shell">
+      <section class="login-panel" id="login-view">
+        <div class="brand-mark">N</div>
+        <h1>Notas</h1>
+        <p class="lede">Acceso directo a Directus con guardado automático y búsqueda global.</p>
+
+        <form id="login-form" class="login-form">
+          <label>
+            <span>Email</span>
+            <input id="email" name="email" type="email" autocomplete="email" placeholder="tu@email.com" required />
+          </label>
+          <label>
+            <span>Contraseña</span>
+            <input id="password" name="password" type="password" autocomplete="current-password" placeholder="Tu contraseña" required />
+          </label>
+          <button type="submit" class="primary">Entrar</button>
+          <p class="form-error" id="login-error" aria-live="polite"></p>
+        </form>
+      </section>
+
+      <section class="workspace hidden" id="app-view">
+        <aside class="sidebar">
+          <div class="sidebar-top">
+            <div>
+              <h2>Notas</h2>
+              <p class="muted" id="notes-count">0 notas</p>
+            </div>
+            <button class="ghost" id="new-note" type="button">Nueva</button>
+          </div>
+
+          <label class="search">
+            <span class="sr-only">Buscar en notas</span>
+            <input id="search" type="search" placeholder="Buscar palabras en todas las notas" />
+          </label>
+
+          <div class="note-list" id="note-list" aria-label="Listado de notas"></div>
+        </aside>
+
+        <section class="editor-pane">
+          <header class="editor-header">
+            <div>
+              <h2 id="note-title">Selecciona una nota</h2>
+              <p class="muted" id="note-meta">Inicia sesión para empezar</p>
+            </div>
+            <div class="header-actions">
+              <span class="status-pill" id="save-status">Sin cambios</span>
+              <button class="ghost" id="logout" type="button">Salir</button>
+            </div>
+          </header>
+
+          <div class="editor-empty" id="empty-state">
+            <div class="empty-card">
+              <h3>Sin notas abiertas</h3>
+              <p>Crea una nota nueva o selecciona una de la barra lateral.</p>
+              <button class="primary" id="empty-new-note" type="button">Crear primera nota</button>
+            </div>
+          </div>
+
+          <label class="editor-wrap hidden" id="editor-wrap">
+            <span class="sr-only">Editor de nota</span>
+            <textarea id="editor" spellcheck="true" placeholder="Escribe aquí..."></textarea>
+          </label>
+        </section>
+      </section>
+    </main>
+
+    <script type="module" src="./app.js"></script>
+  </body>
+</html>
