@@ -206,7 +206,7 @@ function renderNotesList() {
     button.dataset.id = String(note.id);
 
     const body = getNoteBody(note).trim();
-    const firstLine = body.split(/\r?\n/)[0] || 'Sin contenido';
+    const firstLine = getFirstLine(body);
     const snippet = body ? body.slice(0, 240) : 'Escribe algo para empezar.';
 
     button.innerHTML = `
@@ -229,7 +229,7 @@ function renderNotesList() {
 function renderEditor() {
   const note = selectedNote();
   const hasNote = Boolean(note);
-  els.noteTitle.textContent = hasNote ? `Nota #${note.id}` : 'Selecciona una nota';
+  els.noteTitle.textContent = hasNote ? getFirstLine(state.draft || note.nota) : 'Selecciona una nota';
   els.noteMeta.textContent = hasNote
     ? `Modificada ${formatDate(note.date_updated || note.date_created)}`
     : 'Crea una nueva nota desde la barra lateral.';
@@ -262,6 +262,15 @@ function escapeHtml(value = '') {
     .replaceAll('>', '&gt;')
     .replaceAll('"', '&quot;')
     .replaceAll("'", '&#39;');
+}
+
+function getFirstLine(value = '') {
+  const firstLine = String(value || '')
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .find((line) => line.length > 0);
+
+  return firstLine || 'Sin contenido';
 }
 
 async function apiRequest(path, options = {}, retry = true) {
