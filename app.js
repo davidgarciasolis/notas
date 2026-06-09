@@ -21,6 +21,7 @@ const els = {
   noteTitle: document.getElementById('note-title'),
   noteMeta: document.getElementById('note-meta'),
   saveStatus: document.getElementById('save-status'),
+  deleteNote: document.getElementById('delete-note'),
   emptyState: document.getElementById('empty-state'),
   editorWrap: document.getElementById('editor-wrap'),
   editor: document.getElementById('editor')
@@ -39,6 +40,7 @@ const state = {
   creatingNote: false,
   savingByNote: new Map(),
   saveTimers: new Map(),
+  deletedNoteIds: new Set(),
   refreshTimer: null
 };
 
@@ -74,6 +76,7 @@ function clearSession() {
   state.accessToken = null;
   state.refreshToken = null;
   state.tokenExpiresAt = 0;
+  state.deletedNoteIds.clear();
   localStorage.removeItem(STORAGE_KEY);
   if (state.refreshTimer) {
     clearTimeout(state.refreshTimer);
@@ -236,6 +239,7 @@ function renderEditor() {
 
   els.emptyState.classList.toggle('hidden', hasNote);
   els.editorWrap.classList.toggle('hidden', !hasNote);
+  els.deleteNote.disabled = !hasNote;
 
   if (hasNote && els.editor.value !== state.draft) {
     els.editor.value = state.draft;
@@ -348,6 +352,14 @@ async function refreshSession() {
   scheduleRefresh();
 }
 
+function removePendingSave(noteId) {
+  if (state.saveTimers.has(noteId)) {
+    clearTimeout(state.saveTimers.get(noteId));
+    state.saveTimers.delete(noteId);
+  }
+  state.savingByNote.delete(noteId);
+}
+
 async function loadNotes() {
   state.loadingNotes = true;
   setStatus('Cargando notas...', 'neutral');
@@ -434,10 +446,7 @@ function queueSave(noteId, content) {
 
 function immediateSave(noteId, content) {
   if (!noteId) return;
-  if (state.saveTimers.has(noteId)) {
-    clearTimeout(state.saveTimers.get(noteId));
-    state.saveTimers.delete(noteId);
-  }
+  removePendingSave(noteId);
   persistNote(noteId, content).catch((error) => {
     console.error(error);
   });
@@ -473,6 +482,10 @@ async function persistNote(noteId, content) {
         });
 
     if (state.savingByNote.get(noteId) !== currentGeneration) {
+      return;
+    }
+
+    if (state.deletedNoteIds.has(noteId)) {
       return;
     }
 
@@ -541,6 +554,50 @@ function selectNote(id, options = {}) {
   }
 }
 
+async function deleteSelectedNote() {
+  const note = selectedNote();
+  if (!note) return;
+
+  const label = getFirstLine(state.draft || note.nota);
+  const confirmed = confirm(`¿Borrar la nota "${label}"? Esta acción no se puede deshacer.`);
+  if (!confirmed) return;
+
+  const noteId = note.id;
+  setStatus('Borrando...', 'neutral');
+  state.deletedNoteIds.add(noteId);
+  removePendingSave(noteId);
+
+  try {
+    await apiRequest(`/items/${COLLECTION}/${noteId}`, {
+      method: 'DELETE'
+    });
+
+    const remaining = state.notes.filter((item) => item.id !== noteId);
+    state.notes = remaining;
+
+    if (remaining.length) {
+      const next = sortedNotes()[0];
+      state.selectedId = null;
+      state.draft = '';
+      state.lastSavedDraft = '';
+      selectNote(next.id, { focus: false });
+      setStatus('Nota borrada', 'success');
+    } else {
+      state.selectedId = null;
+      state.draft = '';
+      state.lastSavedDraft = '';
+      els.editor.value = '';
+      setStatus('Nota borrada', 'success');
+      render();
+    }
+  } catch (error) {
+    console.error(error);
+    state.deletedNoteIds.delete(noteId);
+    setStatus('No se pudo borrar', 'error');
+    alert(error.message);
+  }
+}
+
 function handleEditorInput() {
   if (!state.selectedId) return;
   state.draft = els.editor.value;
@@ -586,6 +643,7 @@ function wireEvents() {
     createNote();
   });
   els.emptyNewNote.addEventListener('click', createNote);
+  els.deleteNote.addEventListener('click', deleteSelectedNote);
   els.logout.addEventListener('click', () => {
     clearSession();
     state.notes = [];
