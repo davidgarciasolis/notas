@@ -226,14 +226,20 @@ textarea::placeholder {
   gap: 12px;
 }
 
+.editor-header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+}
+
 .editor-header > div:first-child {
-  flex: 1 1 0;
   min-width: 0;
 }
 
 #note-title {
   display: block;
   width: 100%;
+  max-width: 100%;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -339,8 +345,7 @@ textarea::placeholder {
   display: flex;
   align-items: center;
   gap: 10px;
-  flex: 0 0 auto;
-  margin-left: 12px;
+  justify-self: end;
 }
 
 .editor-empty {
