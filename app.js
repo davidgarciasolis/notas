@@ -44,7 +44,13 @@ const state = {
   refreshTimer: null
 };
 
-const dateFormatter = new Intl.DateTimeFormat('es-ES', {
+const noteListDateFormatter = new Intl.DateTimeFormat('es-ES', {
+  day: '2-digit',
+  month: '2-digit',
+  year: 'numeric'
+});
+
+const editorDateFormatter = new Intl.DateTimeFormat('es-ES', {
   dateStyle: 'medium',
   timeStyle: 'short'
 });
@@ -153,7 +159,14 @@ function formatDate(value) {
   if (!value) return 'Sin fecha';
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return 'Sin fecha';
-  return dateFormatter.format(date);
+  return editorDateFormatter.format(date);
+}
+
+function formatListDate(value) {
+  if (!value) return 'Sin fecha';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return 'Sin fecha';
+  return noteListDateFormatter.format(date);
 }
 
 function getNoteBody(note) {
@@ -210,15 +223,12 @@ function renderNotesList() {
 
     const body = getNoteBody(note).trim();
     const firstLine = getFirstLine(body);
-    const snippet = body ? body.slice(0, 240) : 'Escribe algo para empezar.';
+    const secondLine = body.split(/\r?\n/).map((line) => line.trim()).find((line) => line.length > 0 && line !== firstLine) || 'Escribe algo para empezar.';
+    const compactDate = formatListDate(note.date_updated || note.date_created);
 
     button.innerHTML = `
       <div class="note-title">${escapeHtml(firstLine || 'Sin contenido')}</div>
-      <div class="note-snippet">${escapeHtml(snippet)}</div>
-      <div class="note-meta">
-        <span>#${note.id}</span>
-        <span>${escapeHtml(formatDate(note.date_updated || note.date_created))}</span>
-      </div>
+      <div class="note-snippet">${escapeHtml(secondLine)} <span class="note-date">${escapeHtml(compactDate)}</span></div>
     `;
 
     button.addEventListener('click', () => selectNote(Number(note.id)));
