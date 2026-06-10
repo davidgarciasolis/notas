@@ -11,6 +11,7 @@ const els = {
   email: document.getElementById('email'),
   password: document.getElementById('password'),
   loginError: document.getElementById('login-error'),
+  loginStatus: document.getElementById('login-status'),
   appView: document.getElementById('app-view'),
   noteList: document.getElementById('note-list'),
   notesCount: document.getElementById('notes-count'),
@@ -37,6 +38,7 @@ const state = {
   draft: '',
   lastSavedDraft: '',
   loadingNotes: false,
+  authLoading: false,
   creatingNote: false,
   savingByNote: new Map(),
   saveTimers: new Map(),
@@ -99,6 +101,20 @@ function setLoginError(message = '') {
   els.loginError.textContent = message;
 }
 
+function setLoginStatus(message = '') {
+  els.loginStatus.textContent = message;
+}
+
+function setAuthLoading(active, message = '') {
+  state.authLoading = active;
+  els.loginView.classList.toggle('is-loading', active);
+  els.loginForm.classList.toggle('is-loading', active);
+  els.loginForm.querySelectorAll('input, button[type="submit"]').forEach((element) => {
+    element.disabled = active;
+  });
+  setLoginStatus(active ? message : '');
+}
+
 function showLogin() {
   els.loginView.classList.remove('hidden');
   els.appView.classList.add('hidden');
@@ -107,6 +123,7 @@ function showLogin() {
 function showApp() {
   els.loginView.classList.add('hidden');
   els.appView.classList.remove('hidden');
+  els.appView.classList.add('revealed');
 }
 
 function tokenPayload(token) {
@@ -260,7 +277,7 @@ function renderEditor() {
 }
 
 function renderAuthState() {
-  if (state.accessToken && state.refreshToken) {
+  if (state.accessToken && state.refreshToken && !state.authLoading && !state.loadingNotes) {
     showApp();
   } else {
     showLogin();
@@ -376,44 +393,46 @@ function removePendingSave(noteId) {
 async function loadNotes() {
   state.loadingNotes = true;
   setStatus('Cargando notas...', 'neutral');
+  try {
+    const pageSize = MAX_PAGE_SIZE;
+    let page = 1;
+    const all = [];
 
-  const pageSize = MAX_PAGE_SIZE;
-  let page = 1;
-  const all = [];
+    while (true) {
+      const query = new URLSearchParams({
+        fields: 'id,nota,date_created,date_updated',
+        sort: '-date_updated,-date_created',
+        limit: String(pageSize),
+        page: String(page)
+      });
 
-  while (true) {
-    const query = new URLSearchParams({
-      fields: 'id,nota,date_created,date_updated',
-      sort: '-date_updated,-date_created',
-      limit: String(pageSize),
-      page: String(page)
-    });
+      const response = await apiRequest(`/items/${COLLECTION}?${query.toString()}`);
+      const items = Array.isArray(response?.data) ? response.data : [];
+      all.push(...items);
 
-    const response = await apiRequest(`/items/${COLLECTION}?${query.toString()}`);
-    const items = Array.isArray(response?.data) ? response.data : [];
-    all.push(...items);
+      if (items.length < pageSize) break;
+      page += 1;
+    }
 
-    if (items.length < pageSize) break;
-    page += 1;
+    state.notes = all;
+
+    if (!state.selectedId && state.notes.length) {
+      selectNote(state.notes[0].id, { focus: false });
+    }
+
+    if (!state.notes.length) {
+      state.selectedId = null;
+      state.draft = '';
+      state.lastSavedDraft = '';
+      setStatus('Sin notas', 'neutral');
+    } else {
+      setStatus('Sin cambios', 'neutral');
+    }
+
+    render();
+  } finally {
+    state.loadingNotes = false;
   }
-
-  state.notes = all;
-  state.loadingNotes = false;
-
-  if (!state.selectedId && state.notes.length) {
-    selectNote(state.notes[0].id, { focus: false });
-  }
-
-  if (!state.notes.length) {
-    state.selectedId = null;
-    state.draft = '';
-    state.lastSavedDraft = '';
-    setStatus('Sin notas', 'neutral');
-  } else {
-    setStatus('Sin cambios', 'neutral');
-  }
-
-  render();
 }
 
 async function createNote() {
@@ -622,24 +641,28 @@ function handleEditorInput() {
 async function handleLoginSubmit(event) {
   event.preventDefault();
   setLoginError('');
+  setAuthLoading(true, 'Entrando y cargando tus notas...');
   const email = els.email.value.trim();
   const password = els.password.value;
 
   if (!email || !password) {
+    setAuthLoading(false);
     setLoginError('Rellena el email y la contraseña.');
     return;
   }
 
-  els.loginForm.querySelector('button[type="submit"]').disabled = true;
   try {
     await login(email, password);
-    renderAuthState();
     await loadNotes();
+    state.authLoading = false;
+    setAuthLoading(false);
+    renderAuthState();
   } catch (error) {
     setLoginError(error.message);
     clearSession();
-  } finally {
-    els.loginForm.querySelector('button[type="submit"]').disabled = false;
+    state.authLoading = false;
+    setAuthLoading(false);
+    renderAuthState();
   }
 }
 
@@ -659,11 +682,14 @@ function wireEvents() {
   els.deleteNote.addEventListener('click', deleteSelectedNote);
   els.logout.addEventListener('click', () => {
     clearSession();
+    state.authLoading = false;
     state.notes = [];
     state.selectedId = null;
     state.draft = '';
     state.lastSavedDraft = '';
     els.editor.value = '';
+    setLoginStatus('');
+    els.appView.classList.remove('revealed');
     renderAuthState();
     render();
   });
@@ -681,6 +707,7 @@ async function bootstrap() {
     return;
   }
 
+  setAuthLoading(true, 'Restaurando sesión y cargando tus notas...');
   state.accessToken = stored.accessToken;
   state.refreshToken = stored.refreshToken;
   state.tokenExpiresAt = stored.tokenExpiresAt || 0;
@@ -689,9 +716,14 @@ async function bootstrap() {
   try {
     await refreshSession();
     await loadNotes();
+    state.authLoading = false;
+    setAuthLoading(false);
+    renderAuthState();
   } catch (error) {
     console.error(error);
     clearSession();
+    state.authLoading = false;
+    setAuthLoading(false);
     renderAuthState();
     setLoginError('La sesión anterior ya no es válida. Vuelve a entrar.');
     showLogin();
