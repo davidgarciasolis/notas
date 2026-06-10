@@ -226,6 +226,16 @@ textarea::placeholder {
   gap: 12px;
 }
 
+.editor-header > div:first-child {
+  min-width: 0;
+}
+
+#note-title {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .muted {
   color: var(--muted);
 }
@@ -278,12 +288,24 @@ textarea::placeholder {
   color: var(--muted);
   font-size: 0.95rem;
   line-height: 1.35;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.note-snippet-text {
+  min-width: 0;
+  flex: 1 1 auto;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
 .note-date {
+  flex: 0 0 auto;
+  margin-left: auto;
   color: #7a8790;
   font-size: 0.9em;
   font-variant-numeric: tabular-nums;
@@ -291,10 +313,8 @@ textarea::placeholder {
 }
 
 .note-snippet .note-date {
-  margin-left: 8px;
   padding-left: 8px;
   border-left: 1px solid rgba(20, 33, 43, 0.12);
-  overflow: hidden;
 }
 
 .editor-pane {

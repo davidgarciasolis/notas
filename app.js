@@ -228,7 +228,10 @@ function renderNotesList() {
 
     button.innerHTML = `
       <div class="note-title">${escapeHtml(firstLine || 'Sin contenido')}</div>
-      <div class="note-snippet">${escapeHtml(secondLine)} <span class="note-date">${escapeHtml(compactDate)}</span></div>
+      <div class="note-snippet">
+        <span class="note-snippet-text">${escapeHtml(secondLine)}</span>
+        <span class="note-date">${escapeHtml(compactDate)}</span>
+      </div>
     `;
 
     button.addEventListener('click', () => selectNote(Number(note.id)));
