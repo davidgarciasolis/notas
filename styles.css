@@ -1,17 +1,18 @@
 :root {
   color-scheme: light;
-  --bg: #f2efe8;
-  --panel: rgba(255, 255, 255, 0.76);
+  --bg: #f2ece1;
+  --panel: rgba(255, 252, 247, 0.8);
   --panel-solid: #fffaf3;
-  --text: #14212b;
-  --muted: #64727d;
-  --line: rgba(20, 33, 43, 0.12);
+  --text: #15222d;
+  --muted: #63707b;
+  --line: rgba(21, 34, 45, 0.11);
   --accent: #1f6f78;
   --accent-2: #d97842;
-  --shadow: 0 24px 80px rgba(24, 32, 44, 0.14);
+  --shadow: 0 26px 90px rgba(21, 34, 45, 0.14);
   --radius: 22px;
   --radius-sm: 14px;
-  --font: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font: "Avenir Next", "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+  --display: "Iowan Old Style", "Palatino Linotype", "Book Antiqua", Georgia, serif;
   --mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
 }
 
@@ -35,9 +36,10 @@ body {
   font-family: var(--font);
   color: var(--text);
   background:
-    radial-gradient(circle at top left, rgba(31, 111, 120, 0.14), transparent 30%),
-    radial-gradient(circle at top right, rgba(217, 120, 66, 0.14), transparent 28%),
-    linear-gradient(180deg, #f8f5ef, var(--bg));
+    radial-gradient(circle at top left, rgba(31, 111, 120, 0.16), transparent 28%),
+    radial-gradient(circle at top right, rgba(217, 120, 66, 0.14), transparent 26%),
+    radial-gradient(circle at 50% 115%, rgba(21, 34, 45, 0.06), transparent 38%),
+    linear-gradient(180deg, #f9f6f0, var(--bg));
 }
 
 button,
@@ -49,6 +51,27 @@ textarea {
 button {
   border: 0;
   cursor: pointer;
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(31, 111, 120, 0.35) transparent;
+}
+
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+*::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+  background-color: rgba(31, 111, 120, 0.35);
 }
 
 .shell {
@@ -96,8 +119,15 @@ p {
 }
 
 h1 {
+  font-family: var(--display);
   font-size: clamp(2.2rem, 5vw, 3.4rem);
   letter-spacing: -0.04em;
+}
+
+h2,
+h3 {
+  font-family: var(--display);
+  letter-spacing: -0.02em;
 }
 
 .lede {
@@ -153,8 +183,8 @@ input,
 textarea {
   width: 100%;
   border-radius: 14px;
-  border: 1px solid rgba(20, 33, 43, 0.12);
-  background: rgba(255, 255, 255, 0.82);
+  border: 1px solid rgba(21, 34, 45, 0.12);
+  background: rgba(255, 255, 255, 0.86);
   color: var(--text);
   padding: 14px 16px;
   outline: none;
@@ -172,20 +202,28 @@ textarea::placeholder {
   color: #7d8b95;
 }
 
+input:focus-visible,
+textarea:focus-visible,
+button:focus-visible {
+  box-shadow: 0 0 0 4px rgba(31, 111, 120, 0.16);
+}
+
 .primary {
   border-radius: 14px;
   padding: 13px 16px;
   font-weight: 700;
-  transition: transform 0.15s ease, opacity 0.15s ease, background 0.15s ease;
+  transition: transform 0.15s ease, opacity 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
 }
 
 .primary {
   color: white;
   background: linear-gradient(135deg, var(--accent), #17545c);
+  box-shadow: 0 10px 22px rgba(31, 111, 120, 0.18);
 }
 
 .primary:hover {
   transform: translateY(-1px);
+  box-shadow: 0 12px 28px rgba(31, 111, 120, 0.22);
 }
 
 .status-pill {
@@ -279,6 +317,7 @@ textarea::placeholder {
   grid-auto-rows: 74px;
   gap: 10px;
   min-height: 0;
+  scrollbar-gutter: stable;
 }
 
 .note-item {
@@ -292,21 +331,26 @@ textarea::placeholder {
   display: grid;
   grid-template-rows: auto auto;
   overflow: hidden;
-  transition: background 0.15s ease, border-color 0.15s ease, transform 0.15s ease;
+  transition: background 0.15s ease, border-color 0.15s ease, transform 0.15s ease, box-shadow 0.15s ease;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.45);
 }
 
 .note-item:hover {
   transform: translateY(-1px);
-  background: rgba(255, 255, 255, 0.9);
+  background: rgba(255, 255, 255, 0.92);
+  box-shadow: 0 12px 24px rgba(21, 34, 45, 0.08);
 }
 
 .note-item.active {
   border-color: rgba(31, 111, 120, 0.3);
   background: linear-gradient(135deg, rgba(31, 111, 120, 0.12), rgba(31, 111, 120, 0.06));
+  box-shadow: 0 14px 28px rgba(31, 111, 120, 0.12);
 }
 
 .note-title {
   font-weight: 700;
+  line-height: 1.25;
+  letter-spacing: -0.02em;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -323,6 +367,7 @@ textarea::placeholder {
   flex: 0 0 auto;
   color: #7a8790;
   font-size: 0.9em;
+  font-family: var(--mono);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
@@ -395,6 +440,7 @@ textarea::placeholder {
   line-height: 1.65;
   background: rgba(255, 255, 255, 0.84);
   overflow: auto;
+  scrollbar-gutter: stable;
 }
 
 .sr-only {
@@ -430,6 +476,15 @@ textarea::placeholder {
 }
 
 @media (max-width: 640px) {
+  .shell {
+    padding: 10px;
+  }
+
+  .login-panel,
+  .workspace {
+    height: calc(100dvh - 20px);
+  }
+
   .sidebar-top,
   .editor-header {
     align-items: flex-start;
@@ -438,9 +493,24 @@ textarea::placeholder {
 
   .header-actions {
     width: 100%;
-    justify-content: space-between;
+    justify-content: stretch;
+    flex-wrap: wrap;
   }
 
+  .header-actions > * {
+    flex: 1 1 140px;
+  }
+
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation: none !important;
+    transition: none !important;
+    scroll-behavior: auto !important;
+  }
 }
 
 @keyframes workspace-in {

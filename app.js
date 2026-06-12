@@ -333,17 +333,24 @@ function renderNotesList() {
     button.type = 'button';
     button.className = `note-item${note.id === state.selectedId ? ' active' : ''}`;
     button.dataset.id = String(note.id);
+    button.setAttribute('aria-pressed', note.id === state.selectedId ? 'true' : 'false');
+    if (note.id === state.selectedId) {
+      button.setAttribute('aria-current', 'true');
+    }
 
-    const compactDate = formatListDate(note.date_updated || note.date_created);
+    const title = document.createElement('div');
+    title.className = 'note-title';
+    title.textContent = displayNoteTitle(note);
 
-    button.innerHTML = `
-      <div class="note-title">${escapeHtml(displayNoteTitle(note))}</div>
-      <div class="note-meta-row">
-        <span class="note-date">${escapeHtml(compactDate)}</span>
-      </div>
-    `;
+    const metaRow = document.createElement('div');
+    metaRow.className = 'note-meta-row';
 
-    button.addEventListener('click', () => selectNote(Number(note.id)));
+    const date = document.createElement('span');
+    date.className = 'note-date';
+    date.textContent = formatListDate(note.date_updated || note.date_created);
+
+    metaRow.appendChild(date);
+    button.append(title, metaRow);
     fragment.appendChild(button);
   }
 
@@ -351,13 +358,29 @@ function renderNotesList() {
   els.noteList.scrollTop = scrollTop;
 }
 
+function syncSelectedNotePreview() {
+  const note = selectedNote();
+  if (!note) return;
+
+  const title = displayNoteTitle(note);
+  els.noteTitle.textContent = title;
+  els.noteMeta.textContent = `Modificada ${formatDate(note.date_updated || note.date_created)}`;
+
+  const activeTitle = els.noteList.querySelector('.note-item.active .note-title');
+  if (activeTitle) {
+    activeTitle.textContent = title;
+  }
+}
+
 function renderEditor() {
   const note = selectedNote();
   const hasNote = Boolean(note);
-  els.noteTitle.textContent = hasNote ? displayNoteTitle(note) : 'Selecciona una nota';
-  els.noteMeta.textContent = hasNote
-    ? `Modificada ${formatDate(note.date_updated || note.date_created)}`
-    : 'Crea una nueva nota desde la barra lateral.';
+  if (hasNote) {
+    syncSelectedNotePreview();
+  } else {
+    els.noteTitle.textContent = 'Selecciona una nota';
+    els.noteMeta.textContent = 'Crea una nueva nota desde la barra lateral.';
+  }
 
   els.emptyState.classList.toggle('hidden', hasNote);
   els.editorWrap.classList.toggle('hidden', !hasNote);
@@ -379,19 +402,6 @@ function renderAuthState() {
 function render() {
   renderNotesList();
   renderEditor();
-}
-
-function escapeHtml(value = '') {
-  return value
-    .replaceAll('&', '&amp;')
-    .replaceAll('<', '&lt;')
-    .replaceAll('>', '&gt;')
-    .replaceAll('"', '&quot;')
-    .replaceAll("'", '&#39;');
-}
-
-function getFirstLine(value = '') {
-  return noteTitleFromBody(value);
 }
 
 async function apiRequest(path, options = {}, retry = true) {
@@ -697,8 +707,7 @@ async function deleteSelectedNote() {
 function handleEditorInput() {
   if (!state.selectedId) return;
   state.draft = els.editor.value;
-  renderNotesList();
-  renderEditor();
+  syncSelectedNotePreview();
   setStatus('Cambios pendientes', 'neutral');
   queueSave(state.selectedId, state.draft);
 }
@@ -751,6 +760,11 @@ async function handleLoginSubmit(event) {
 
 function wireEvents() {
   els.loginForm.addEventListener('submit', handleLoginSubmit);
+  els.noteList.addEventListener('click', (event) => {
+    const item = event.target.closest('.note-item');
+    if (!item) return;
+    selectNote(Number(item.dataset.id));
+  });
   els.search.addEventListener('input', () => {
     state.searchQuery = els.search.value;
     scheduleSearchReload();
