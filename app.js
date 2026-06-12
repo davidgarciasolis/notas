@@ -1,7 +1,6 @@
 const API_BASE = 'https://api.mueblesavenida.com';
 const COLLECTION = 'notas';
 const STORAGE_KEY = 'notas.directus.session';
-const TITLE_MIGRATION_KEY = 'notas.directus.titlesMigrated';
 const SAVE_DEBOUNCE_MS = 650;
 const SEARCH_DEBOUNCE_MS = 350;
 const MAX_TITLE_LENGTH = 80;
@@ -84,14 +83,6 @@ function loadSession() {
   } catch {
     return null;
   }
-}
-
-function hasCompletedTitleMigration() {
-  return localStorage.getItem(TITLE_MIGRATION_KEY) === '1';
-}
-
-function markTitleMigrationComplete() {
-  localStorage.setItem(TITLE_MIGRATION_KEY, '1');
 }
 
 function clearSession() {
@@ -178,13 +169,6 @@ function scheduleRefresh() {
   }, delay);
 }
 
-function normalizeText(value = '') {
-  return value
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .toLowerCase();
-}
-
 function effectiveDate(note) {
   const raw = note.date_updated || note.date_created;
   const time = raw ? new Date(raw).getTime() : 0;
@@ -212,15 +196,11 @@ function selectedNote() {
   return state.notes.find((note) => note.id === state.selectedId) || null;
 }
 
-function firstMeaningfulLine(value = '') {
+function noteTitleFromBody(value = '') {
   return String(value || '')
     .split(/\r?\n/)
     .map((line) => line.trim())
-    .find((line) => line.length > 0) || '';
-}
-
-function noteTitleFromBody(value = '') {
-  return firstMeaningfulLine(value) || 'Sin contenido';
+    .find((line) => line.length > 0) || 'Sin contenido';
 }
 
 function storedNoteTitleFromBody(value = '') {
@@ -289,48 +269,19 @@ async function fetchNoteById(noteId) {
   return normalizeNote(response?.data || response);
 }
 
-async function backfillMissingTitles() {
-  let page = 1;
-
-  while (true) {
-    const query = new URLSearchParams({
-      fields: 'id,nota,titulo',
-      sort: '-date_updated,-date_created',
-      limit: String(MAX_PAGE_SIZE),
-      page: String(page)
-    });
-    const response = await apiRequest(`/items/${COLLECTION}?${query.toString()}`);
-    const notes = Array.isArray(response?.data) ? response.data : [];
-
-    for (const note of notes) {
-      if (String(note?.titulo || '').trim()) continue;
-      await apiRequest(`/items/${COLLECTION}/${note.id}`, {
-        method: 'PATCH',
-        body: JSON.stringify({
-          titulo: storedNoteTitleFromBody(note?.nota)
-        })
-      });
-    }
-
-    if (notes.length < MAX_PAGE_SIZE) break;
-    page += 1;
-  }
-}
-
-async function ensureTitleMigration() {
-  if (hasCompletedTitleMigration()) return;
-  await backfillMissingTitles();
-  markTitleMigrationComplete();
-}
-
 async function loadNotesList({ selectFirst = false } = {}) {
   state.loadingNotes = true;
-  setStatus(state.searchQuery.trim() ? 'Buscando notas...' : 'Cargando notas...', 'neutral');
+  const search = state.searchQuery.trim();
+  const searching = Boolean(search);
+  setStatus(searching ? 'Buscando notas...' : 'Cargando notas...', 'neutral');
 
   try {
-    state.notes = await fetchAllNotes({ search: state.searchQuery });
+    const notes = search ? await fetchNotesPage({ page: 1, search }) : await fetchAllNotes();
+    if (!state.accessToken || !state.refreshToken) return;
 
-    if (selectFirst && !state.selectedId && state.notes.length) {
+    state.notes = notes;
+
+    if (selectFirst && !searching && !state.selectedId && state.notes.length) {
       await selectNote(state.notes[0].id, { focus: false, skipStatus: true });
     }
 
@@ -338,10 +289,10 @@ async function loadNotesList({ selectFirst = false } = {}) {
       state.currentNote = null;
       state.draft = '';
       state.lastSavedDraft = '';
-      setStatus(state.searchQuery.trim() ? 'Sin coincidencias' : 'Sin notas', 'neutral');
-    } else if (!state.notes.length && state.searchQuery.trim()) {
+      setStatus(searching ? 'Sin coincidencias' : 'Sin notas', 'neutral');
+    } else if (!state.notes.length && searching) {
       setStatus('Sin coincidencias', 'neutral');
-    } else if (state.searchQuery.trim()) {
+    } else if (searching) {
       setStatus(`${state.notes.length} resultado${state.notes.length === 1 ? '' : 's'}`, 'neutral');
     } else {
       setStatus('Sin cambios', 'neutral');
@@ -431,7 +382,7 @@ function renderEditor() {
 }
 
 function renderAuthState() {
-  if (state.accessToken && state.refreshToken && !state.authLoading && !state.loadingNotes) {
+  if (state.accessToken && state.refreshToken && !state.authLoading) {
     showApp();
   } else {
     showLogin();
@@ -696,6 +647,7 @@ async function selectNote(id, options = {}) {
   }
 
   const note = state.currentNote?.id === id ? state.currentNote : await fetchNoteById(id);
+  if (!state.accessToken || !state.refreshToken) return;
   if (token !== state.selectionToken) return;
 
   state.selectedId = id;
@@ -793,18 +745,25 @@ async function handleLoginSubmit(event) {
 
   try {
     await login(email, password);
-    setStatus('Actualizando títulos...', 'neutral');
-    await ensureTitleMigration();
-    await loadNotes();
-    state.authLoading = false;
-    setAuthLoading(false);
-    renderAuthState();
   } catch (error) {
-    setLoginError(error.message);
+    console.error(error);
     clearSession();
-    state.authLoading = false;
     setAuthLoading(false);
     renderAuthState();
+    setLoginError(error.message);
+    return;
+  }
+
+  setAuthLoading(false);
+  renderAuthState();
+  setStatus('Cargando notas...', 'neutral');
+
+  try {
+    await loadNotes();
+  } catch (error) {
+    console.error(error);
+    setStatus('No se pudieron cargar las notas', 'error');
+    setLoginError('No se pudieron cargar las notas');
   }
 }
 
@@ -858,20 +817,25 @@ async function bootstrap() {
 
   try {
     await refreshSession();
-    setStatus('Actualizando títulos...', 'neutral');
-    await ensureTitleMigration();
-    await loadNotes();
-    state.authLoading = false;
-    setAuthLoading(false);
-    renderAuthState();
   } catch (error) {
     console.error(error);
     clearSession();
-    state.authLoading = false;
     setAuthLoading(false);
     renderAuthState();
     setLoginError('La sesión anterior ya no es válida. Vuelve a entrar.');
     showLogin();
+    return;
+  }
+
+  setAuthLoading(false);
+  renderAuthState();
+  setStatus('Cargando notas...', 'neutral');
+
+  try {
+    await loadNotes();
+  } catch (error) {
+    console.error(error);
+    setStatus('No se pudieron cargar las notas', 'error');
   }
 }
 
