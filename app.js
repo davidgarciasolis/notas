@@ -4,6 +4,7 @@ const STORAGE_KEY = 'notas.directus.session';
 const TITLE_MIGRATION_KEY = 'notas.directus.titlesMigrated';
 const SAVE_DEBOUNCE_MS = 650;
 const SEARCH_DEBOUNCE_MS = 350;
+const MAX_TITLE_LENGTH = 80;
 const RETRY_DELAY_MS = 5000;
 const MAX_PAGE_SIZE = 200;
 
@@ -222,6 +223,10 @@ function noteTitleFromBody(value = '') {
   return firstMeaningfulLine(value) || 'Sin contenido';
 }
 
+function storedNoteTitleFromBody(value = '') {
+  return noteTitleFromBody(value).slice(0, MAX_TITLE_LENGTH);
+}
+
 function normalizeNote(note) {
   if (!note) return null;
   const content = note.nota ?? '';
@@ -302,7 +307,7 @@ async function backfillMissingTitles() {
       await apiRequest(`/items/${COLLECTION}/${note.id}`, {
         method: 'PATCH',
         body: JSON.stringify({
-          titulo: noteTitleFromBody(note?.nota)
+          titulo: storedNoteTitleFromBody(note?.nota)
         })
       });
     }
@@ -542,7 +547,7 @@ async function createNote() {
   try {
     const response = await apiRequest(`/items/${COLLECTION}`, {
       method: 'POST',
-      body: JSON.stringify({ nota: '', titulo: 'Sin contenido' })
+      body: JSON.stringify({ nota: '', titulo: storedNoteTitleFromBody('Sin contenido') })
     });
 
     const note = normalizeNote(response.data);
@@ -588,7 +593,7 @@ async function persistNote(noteId, content) {
   const current = state.currentNote?.id === noteId ? state.currentNote : note;
   if (!current) return;
 
-  const nextTitle = noteTitleFromBody(content);
+  const nextTitle = storedNoteTitleFromBody(content);
 
   if (current.nota === content && current.titulo === nextTitle && current.date_updated) {
     if (state.selectedId === noteId) {
