@@ -282,7 +282,7 @@ textarea::placeholder {
   overflow: auto;
   padding-right: 4px;
   display: grid;
-  grid-auto-rows: 86px;
+  grid-auto-rows: 74px;
   gap: 10px;
   min-height: 0;
 }
@@ -318,37 +318,19 @@ textarea::placeholder {
   text-overflow: ellipsis;
 }
 
-.note-snippet {
-  color: var(--muted);
-  font-size: 0.95rem;
-  line-height: 1.35;
+.note-meta-row {
   display: flex;
-  align-items: baseline;
-  gap: 8px;
+  align-items: center;
   min-width: 0;
   overflow: hidden;
-}
-
-.note-snippet-text {
-  min-width: 0;
-  flex: 1 1 auto;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
 
 .note-date {
   flex: 0 0 auto;
-  margin-left: auto;
   color: #7a8790;
   font-size: 0.9em;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
-}
-
-.note-snippet .note-date {
-  padding-left: 8px;
-  border-left: 1px solid rgba(20, 33, 43, 0.12);
 }
 
 .editor-pane {

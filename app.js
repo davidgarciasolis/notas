@@ -1,7 +1,9 @@
 const API_BASE = 'https://api.mueblesavenida.com';
 const COLLECTION = 'notas';
 const STORAGE_KEY = 'notas.directus.session';
+const TITLE_MIGRATION_KEY = 'notas.directus.titlesMigrated';
 const SAVE_DEBOUNCE_MS = 650;
+const SEARCH_DEBOUNCE_MS = 350;
 const RETRY_DELAY_MS = 5000;
 const MAX_PAGE_SIZE = 200;
 
@@ -33,6 +35,7 @@ const state = {
   refreshToken: null,
   tokenExpiresAt: 0,
   notes: [],
+  currentNote: null,
   selectedId: null,
   searchQuery: '',
   draft: '',
@@ -43,6 +46,8 @@ const state = {
   savingByNote: new Map(),
   saveTimers: new Map(),
   deletedNoteIds: new Set(),
+  searchTimer: null,
+  selectionToken: 0,
   refreshTimer: null
 };
 
@@ -80,15 +85,28 @@ function loadSession() {
   }
 }
 
+function hasCompletedTitleMigration() {
+  return localStorage.getItem(TITLE_MIGRATION_KEY) === '1';
+}
+
+function markTitleMigrationComplete() {
+  localStorage.setItem(TITLE_MIGRATION_KEY, '1');
+}
+
 function clearSession() {
   state.accessToken = null;
   state.refreshToken = null;
   state.tokenExpiresAt = 0;
   state.deletedNoteIds.clear();
+  state.currentNote = null;
   localStorage.removeItem(STORAGE_KEY);
   if (state.refreshTimer) {
     clearTimeout(state.refreshTimer);
     state.refreshTimer = null;
+  }
+  if (state.searchTimer) {
+    clearTimeout(state.searchTimer);
+    state.searchTimer = null;
   }
 }
 
@@ -186,18 +204,162 @@ function formatListDate(value) {
   return noteListDateFormatter.format(date);
 }
 
-function getNoteBody(note) {
-  if (!note) return '';
-  if (note.id === state.selectedId) return state.draft;
-  return note.nota || '';
+function selectedNote() {
+  if (state.currentNote?.id === state.selectedId) {
+    return state.currentNote;
+  }
+  return state.notes.find((note) => note.id === state.selectedId) || null;
 }
 
-function matchesSearch(note, query) {
-  if (!query) return true;
-  return normalizeText(getNoteBody(note)).includes(query);
+function firstMeaningfulLine(value = '') {
+  return String(value || '')
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .find((line) => line.length > 0) || '';
 }
 
-function sortedNotes() {
+function noteTitleFromBody(value = '') {
+  return firstMeaningfulLine(value) || 'Sin contenido';
+}
+
+function normalizeNote(note) {
+  if (!note) return null;
+  const content = note.nota ?? '';
+  return {
+    ...note,
+    nota: content,
+    titulo: (typeof note.titulo === 'string' && note.titulo.trim()) || noteTitleFromBody(content)
+  };
+}
+
+function displayNoteTitle(note) {
+  if (!note) return 'Sin contenido';
+  if (note.id === state.selectedId) {
+    return noteTitleFromBody(state.draft);
+  }
+  return note.titulo || noteTitleFromBody(note.nota);
+}
+
+function buildNotesQuery({ page = 1, search = '' } = {}) {
+  const query = new URLSearchParams({
+    fields: 'id,titulo,date_created,date_updated',
+    sort: '-date_updated,-date_created',
+    limit: String(MAX_PAGE_SIZE),
+    page: String(page)
+  });
+
+  const normalizedSearch = search.trim();
+  if (normalizedSearch) {
+    query.set('filter[_or][0][titulo][_icontains]', normalizedSearch);
+    query.set('filter[_or][1][nota][_icontains]', normalizedSearch);
+  }
+
+  return query;
+}
+
+async function fetchNotesPage({ page = 1, search = '' } = {}) {
+  const response = await apiRequest(`/items/${COLLECTION}?${buildNotesQuery({ page, search }).toString()}`);
+  return Array.isArray(response?.data) ? response.data.map(normalizeNote) : [];
+}
+
+async function fetchAllNotes({ search = '' } = {}) {
+  let page = 1;
+  const items = [];
+
+  while (true) {
+    const pageItems = await fetchNotesPage({ page, search });
+    items.push(...pageItems);
+    if (pageItems.length < MAX_PAGE_SIZE) break;
+    page += 1;
+  }
+
+  return items;
+}
+
+async function fetchNoteById(noteId) {
+  const query = new URLSearchParams({
+    fields: 'id,titulo,nota,date_created,date_updated'
+  });
+  const response = await apiRequest(`/items/${COLLECTION}/${noteId}?${query.toString()}`);
+  return normalizeNote(response?.data || response);
+}
+
+async function backfillMissingTitles() {
+  let page = 1;
+
+  while (true) {
+    const query = new URLSearchParams({
+      fields: 'id,nota,titulo',
+      sort: '-date_updated,-date_created',
+      limit: String(MAX_PAGE_SIZE),
+      page: String(page)
+    });
+    const response = await apiRequest(`/items/${COLLECTION}?${query.toString()}`);
+    const notes = Array.isArray(response?.data) ? response.data : [];
+
+    for (const note of notes) {
+      if (String(note?.titulo || '').trim()) continue;
+      await apiRequest(`/items/${COLLECTION}/${note.id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({
+          titulo: noteTitleFromBody(note?.nota)
+        })
+      });
+    }
+
+    if (notes.length < MAX_PAGE_SIZE) break;
+    page += 1;
+  }
+}
+
+async function ensureTitleMigration() {
+  if (hasCompletedTitleMigration()) return;
+  await backfillMissingTitles();
+  markTitleMigrationComplete();
+}
+
+async function loadNotesList({ selectFirst = false } = {}) {
+  state.loadingNotes = true;
+  setStatus(state.searchQuery.trim() ? 'Buscando notas...' : 'Cargando notas...', 'neutral');
+
+  try {
+    state.notes = await fetchAllNotes({ search: state.searchQuery });
+
+    if (selectFirst && !state.selectedId && state.notes.length) {
+      await selectNote(state.notes[0].id, { focus: false, skipStatus: true });
+    }
+
+    if (!state.notes.length && !state.selectedId) {
+      state.currentNote = null;
+      state.draft = '';
+      state.lastSavedDraft = '';
+      setStatus(state.searchQuery.trim() ? 'Sin coincidencias' : 'Sin notas', 'neutral');
+    } else if (!state.notes.length && state.searchQuery.trim()) {
+      setStatus('Sin coincidencias', 'neutral');
+    } else if (state.searchQuery.trim()) {
+      setStatus(`${state.notes.length} resultado${state.notes.length === 1 ? '' : 's'}`, 'neutral');
+    } else {
+      setStatus('Sin cambios', 'neutral');
+    }
+
+    render();
+  } finally {
+    state.loadingNotes = false;
+  }
+}
+
+async function loadNotes() {
+  await loadNotesList({ selectFirst: true });
+}
+
+function updateNotesAfterDelete(noteId) {
+  state.notes = state.notes.filter((item) => item.id !== noteId);
+  if (state.currentNote?.id === noteId) {
+    state.currentNote = null;
+  }
+}
+
+function sortedNoteSummaries() {
   return [...state.notes].sort((a, b) => {
     const diff = effectiveDate(b) - effectiveDate(a);
     if (diff !== 0) return diff;
@@ -205,19 +367,10 @@ function sortedNotes() {
   });
 }
 
-function filteredNotes() {
-  const query = normalizeText(state.searchQuery.trim());
-  return sortedNotes().filter((note) => matchesSearch(note, query));
-}
-
-function selectedNote() {
-  return state.notes.find((note) => note.id === state.selectedId) || null;
-}
-
 function renderNotesList() {
-  const items = filteredNotes();
+  const items = state.notes;
   const scrollTop = els.noteList.scrollTop;
-  els.notesCount.textContent = `${state.notes.length} nota${state.notes.length === 1 ? '' : 's'}`;
+  els.notesCount.textContent = `${items.length} nota${items.length === 1 ? '' : 's'}`;
   els.noteList.innerHTML = '';
 
   if (!items.length) {
@@ -238,15 +391,11 @@ function renderNotesList() {
     button.className = `note-item${note.id === state.selectedId ? ' active' : ''}`;
     button.dataset.id = String(note.id);
 
-    const body = getNoteBody(note).trim();
-    const firstLine = getFirstLine(body);
-    const secondLine = body.split(/\r?\n/).map((line) => line.trim()).find((line) => line.length > 0 && line !== firstLine) || 'Escribe algo para empezar.';
     const compactDate = formatListDate(note.date_updated || note.date_created);
 
     button.innerHTML = `
-      <div class="note-title">${escapeHtml(firstLine || 'Sin contenido')}</div>
-      <div class="note-snippet">
-        <span class="note-snippet-text">${escapeHtml(secondLine)}</span>
+      <div class="note-title">${escapeHtml(displayNoteTitle(note))}</div>
+      <div class="note-meta-row">
         <span class="note-date">${escapeHtml(compactDate)}</span>
       </div>
     `;
@@ -262,7 +411,7 @@ function renderNotesList() {
 function renderEditor() {
   const note = selectedNote();
   const hasNote = Boolean(note);
-  els.noteTitle.textContent = hasNote ? getFirstLine(state.draft || note.nota) : 'Selecciona una nota';
+  els.noteTitle.textContent = hasNote ? displayNoteTitle(note) : 'Selecciona una nota';
   els.noteMeta.textContent = hasNote
     ? `Modificada ${formatDate(note.date_updated || note.date_created)}`
     : 'Crea una nueva nota desde la barra lateral.';
@@ -299,12 +448,7 @@ function escapeHtml(value = '') {
 }
 
 function getFirstLine(value = '') {
-  const firstLine = String(value || '')
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .find((line) => line.length > 0);
-
-  return firstLine || 'Sin contenido';
+  return noteTitleFromBody(value);
 }
 
 async function apiRequest(path, options = {}, retry = true) {
@@ -390,51 +534,6 @@ function removePendingSave(noteId) {
   state.savingByNote.delete(noteId);
 }
 
-async function loadNotes() {
-  state.loadingNotes = true;
-  setStatus('Cargando notas...', 'neutral');
-  try {
-    const pageSize = MAX_PAGE_SIZE;
-    let page = 1;
-    const all = [];
-
-    while (true) {
-      const query = new URLSearchParams({
-        fields: 'id,nota,date_created,date_updated',
-        sort: '-date_updated,-date_created',
-        limit: String(pageSize),
-        page: String(page)
-      });
-
-      const response = await apiRequest(`/items/${COLLECTION}?${query.toString()}`);
-      const items = Array.isArray(response?.data) ? response.data : [];
-      all.push(...items);
-
-      if (items.length < pageSize) break;
-      page += 1;
-    }
-
-    state.notes = all;
-
-    if (!state.selectedId && state.notes.length) {
-      selectNote(state.notes[0].id, { focus: false });
-    }
-
-    if (!state.notes.length) {
-      state.selectedId = null;
-      state.draft = '';
-      state.lastSavedDraft = '';
-      setStatus('Sin notas', 'neutral');
-    } else {
-      setStatus('Sin cambios', 'neutral');
-    }
-
-    render();
-  } finally {
-    state.loadingNotes = false;
-  }
-}
-
 async function createNote() {
   if (state.creatingNote) return;
   state.creatingNote = true;
@@ -443,12 +542,12 @@ async function createNote() {
   try {
     const response = await apiRequest(`/items/${COLLECTION}`, {
       method: 'POST',
-      body: JSON.stringify({ nota: '' })
+      body: JSON.stringify({ nota: '', titulo: 'Sin contenido' })
     });
 
-    const note = response.data;
-    state.notes = [note, ...state.notes];
-    selectNote(note.id, { focus: true, preserveDraft: false });
+    const note = normalizeNote(response.data);
+    upsertNote(note);
+    await selectNote(note.id, { focus: true, preserveDraft: false, skipStatus: true });
     setStatus('Sin cambios', 'neutral');
   } catch (error) {
     setStatus('No se pudo crear la nota', 'error');
@@ -486,9 +585,12 @@ function immediateSave(noteId, content) {
 
 async function persistNote(noteId, content) {
   const note = state.notes.find((item) => item.id === noteId);
-  if (!note) return;
+  const current = state.currentNote?.id === noteId ? state.currentNote : note;
+  if (!current) return;
 
-  if (note.nota === content && note.date_updated) {
+  const nextTitle = noteTitleFromBody(content);
+
+  if (current.nota === content && current.titulo === nextTitle && current.date_updated) {
     if (state.selectedId === noteId) {
       state.lastSavedDraft = content;
       setStatus('Sin cambios', 'neutral');
@@ -503,15 +605,10 @@ async function persistNote(noteId, content) {
   }
 
   try {
-    const response = note.date_created && note.id
-      ? await apiRequest(`/items/${COLLECTION}/${noteId}`, {
-          method: 'PATCH',
-          body: JSON.stringify({ nota: content })
-        })
-      : await apiRequest(`/items/${COLLECTION}`, {
-          method: 'POST',
-          body: JSON.stringify({ nota: content })
-        });
+    const response = await apiRequest(`/items/${COLLECTION}/${noteId}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ nota: content, titulo: nextTitle })
+    });
 
     if (state.savingByNote.get(noteId) !== currentGeneration) {
       return;
@@ -521,15 +618,21 @@ async function persistNote(noteId, content) {
       return;
     }
 
-    const saved = response.data;
+    const saved = normalizeNote(response.data);
     upsertNote(saved);
 
     if (state.selectedId === noteId) {
       state.lastSavedDraft = content;
-      setStatus('Guardado', 'success');
       renderEditor();
     }
-    renderNotesList();
+    if (state.searchQuery.trim()) {
+      await loadNotesList();
+    } else {
+      renderNotesList();
+    }
+    if (state.selectedId === noteId) {
+      setStatus('Guardado', 'success');
+    }
   } catch (error) {
     if (state.savingByNote.get(noteId) !== currentGeneration) {
       return;
@@ -555,26 +658,43 @@ async function persistNote(noteId, content) {
 }
 
 function upsertNote(saved) {
+  if (!saved) return;
   const existingIndex = state.notes.findIndex((note) => note.id === saved.id);
   if (existingIndex === -1) {
     state.notes.push(saved);
   } else {
     state.notes.splice(existingIndex, 1, saved);
   }
-  state.notes = sortedNotes();
+  state.notes = [...state.notes].sort((a, b) => {
+    const diff = effectiveDate(b) - effectiveDate(a);
+    if (diff !== 0) return diff;
+    return Number(b.id) - Number(a.id);
+  });
+
+  if (state.currentNote?.id === saved.id) {
+    state.currentNote = saved;
+  }
 }
 
-function selectNote(id, options = {}) {
-  const note = state.notes.find((item) => item.id === id);
-  if (!note) return;
+async function selectNote(id, options = {}) {
+  const { focus = true, skipStatus = false } = options;
+  if (!state.notes.some((item) => item.id === id) && state.currentNote?.id !== id) return;
 
-  const { focus = true } = options;
   const current = selectedNote();
   if (current && current.id !== id && current.id && state.draft !== state.lastSavedDraft) {
     immediateSave(current.id, state.draft);
   }
 
+  const token = ++state.selectionToken;
+  if (!skipStatus) {
+    setStatus('Cargando nota...', 'neutral');
+  }
+
+  const note = state.currentNote?.id === id ? state.currentNote : await fetchNoteById(id);
+  if (token !== state.selectionToken) return;
+
   state.selectedId = id;
+  state.currentNote = note;
   state.draft = note.nota || '';
   state.lastSavedDraft = state.draft;
   els.editor.value = state.draft;
@@ -590,7 +710,7 @@ async function deleteSelectedNote() {
   const note = selectedNote();
   if (!note) return;
 
-  const label = getFirstLine(state.draft || note.nota);
+  const label = displayNoteTitle(note);
   const confirmed = confirm(`¿Borrar la nota "${label}"? Esta acción no se puede deshacer.`);
   if (!confirmed) return;
 
@@ -604,15 +724,15 @@ async function deleteSelectedNote() {
       method: 'DELETE'
     });
 
-    const remaining = state.notes.filter((item) => item.id !== noteId);
-    state.notes = remaining;
+    updateNotesAfterDelete(noteId);
+    const remaining = sortedNoteSummaries();
 
     if (remaining.length) {
-      const next = sortedNotes()[0];
+      const next = remaining[0];
       state.selectedId = null;
       state.draft = '';
       state.lastSavedDraft = '';
-      selectNote(next.id, { focus: false });
+      await selectNote(next.id, { focus: false, skipStatus: true });
       setStatus('Nota borrada', 'success');
     } else {
       state.selectedId = null;
@@ -634,8 +754,23 @@ function handleEditorInput() {
   if (!state.selectedId) return;
   state.draft = els.editor.value;
   renderNotesList();
+  renderEditor();
   setStatus('Cambios pendientes', 'neutral');
   queueSave(state.selectedId, state.draft);
+}
+
+function scheduleSearchReload() {
+  if (state.searchTimer) {
+    clearTimeout(state.searchTimer);
+  }
+
+  state.searchTimer = setTimeout(() => {
+    state.searchTimer = null;
+    loadNotesList().catch((error) => {
+      console.error(error);
+      setStatus('No se pudo buscar', 'error');
+    });
+  }, SEARCH_DEBOUNCE_MS);
 }
 
 async function handleLoginSubmit(event) {
@@ -653,6 +788,8 @@ async function handleLoginSubmit(event) {
 
   try {
     await login(email, password);
+    setStatus('Actualizando títulos...', 'neutral');
+    await ensureTitleMigration();
     await loadNotes();
     state.authLoading = false;
     setAuthLoading(false);
@@ -670,7 +807,7 @@ function wireEvents() {
   els.loginForm.addEventListener('submit', handleLoginSubmit);
   els.search.addEventListener('input', () => {
     state.searchQuery = els.search.value;
-    renderNotesList();
+    scheduleSearchReload();
   });
   els.newNote.addEventListener('click', () => {
     if (state.selectedId && state.draft !== state.lastSavedDraft) {
@@ -684,6 +821,7 @@ function wireEvents() {
     clearSession();
     state.authLoading = false;
     state.notes = [];
+    state.currentNote = null;
     state.selectedId = null;
     state.draft = '';
     state.lastSavedDraft = '';
@@ -715,6 +853,8 @@ async function bootstrap() {
 
   try {
     await refreshSession();
+    setStatus('Actualizando títulos...', 'neutral');
+    await ensureTitleMigration();
     await loadNotes();
     state.authLoading = false;
     setAuthLoading(false);
