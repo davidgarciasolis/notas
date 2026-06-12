@@ -743,7 +743,7 @@ async function handleLoginSubmit(event) {
 
   setAuthLoading(false);
   renderAuthState();
-  void loadNotesList().catch((error) => {
+  void loadNotesList({ selectFirst: true }).catch((error) => {
     console.error(error);
     setStatus('No se pudo cargar el listado', 'error');
   });
@@ -810,7 +810,7 @@ async function bootstrap() {
 
   setAuthLoading(false);
   renderAuthState();
-  void loadNotesList().catch((error) => {
+  void loadNotesList({ selectFirst: true }).catch((error) => {
     console.error(error);
     setStatus('No se pudo cargar el listado', 'error');
   });
