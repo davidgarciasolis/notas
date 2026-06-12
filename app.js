@@ -13,7 +13,6 @@ const els = {
   email: document.getElementById('email'),
   password: document.getElementById('password'),
   loginError: document.getElementById('login-error'),
-  loginStatus: document.getElementById('login-status'),
   appView: document.getElementById('app-view'),
   noteList: document.getElementById('note-list'),
   notesCount: document.getElementById('notes-count'),
@@ -111,18 +110,11 @@ function setLoginError(message = '') {
   els.loginError.textContent = message;
 }
 
-function setLoginStatus(message = '') {
-  els.loginStatus.textContent = message;
-}
-
-function setAuthLoading(active, message = '') {
+function setAuthLoading(active) {
   state.authLoading = active;
-  els.loginView.classList.toggle('is-loading', active);
-  els.loginForm.classList.toggle('is-loading', active);
   els.loginForm.querySelectorAll('input, button[type="submit"]').forEach((element) => {
     element.disabled = active;
   });
-  setLoginStatus(active ? message : '');
 }
 
 function showLogin() {
@@ -273,7 +265,6 @@ async function loadNotesList({ selectFirst = false } = {}) {
   state.loadingNotes = true;
   const search = state.searchQuery.trim();
   const searching = Boolean(search);
-  setStatus(searching ? 'Buscando notas...' : 'Cargando notas...', 'neutral');
 
   try {
     const notes = search ? await fetchNotesPage({ page: 1, search }) : await fetchAllNotes();
@@ -304,10 +295,6 @@ async function loadNotesList({ selectFirst = false } = {}) {
   }
 }
 
-async function loadNotes() {
-  await loadNotesList({ selectFirst: true });
-}
-
 function updateNotesAfterDelete(noteId) {
   state.notes = state.notes.filter((item) => item.id !== noteId);
   if (state.currentNote?.id === noteId) {
@@ -335,7 +322,7 @@ function renderNotesList() {
     empty.style.padding = '12px 4px';
     empty.textContent = state.searchQuery.trim()
       ? 'No hay coincidencias para esa búsqueda.'
-      : 'Todavía no hay notas.';
+      : 'El listado no se carga automáticamente. Usa Buscar o crea una nota.';
     els.noteList.appendChild(empty);
     return;
   }
@@ -733,7 +720,7 @@ function scheduleSearchReload() {
 async function handleLoginSubmit(event) {
   event.preventDefault();
   setLoginError('');
-  setAuthLoading(true, 'Entrando y cargando tus notas...');
+  setAuthLoading(true);
   const email = els.email.value.trim();
   const password = els.password.value;
 
@@ -756,15 +743,6 @@ async function handleLoginSubmit(event) {
 
   setAuthLoading(false);
   renderAuthState();
-  setStatus('Cargando notas...', 'neutral');
-
-  try {
-    await loadNotes();
-  } catch (error) {
-    console.error(error);
-    setStatus('No se pudieron cargar las notas', 'error');
-    setLoginError('No se pudieron cargar las notas');
-  }
 }
 
 function wireEvents() {
@@ -790,7 +768,6 @@ function wireEvents() {
     state.draft = '';
     state.lastSavedDraft = '';
     els.editor.value = '';
-    setLoginStatus('');
     els.appView.classList.remove('revealed');
     renderAuthState();
     render();
@@ -809,7 +786,7 @@ async function bootstrap() {
     return;
   }
 
-  setAuthLoading(true, 'Restaurando sesión y cargando tus notas...');
+  setAuthLoading(true);
   state.accessToken = stored.accessToken;
   state.refreshToken = stored.refreshToken;
   state.tokenExpiresAt = stored.tokenExpiresAt || 0;
@@ -829,14 +806,6 @@ async function bootstrap() {
 
   setAuthLoading(false);
   renderAuthState();
-  setStatus('Cargando notas...', 'neutral');
-
-  try {
-    await loadNotes();
-  } catch (error) {
-    console.error(error);
-    setStatus('No se pudieron cargar las notas', 'error');
-  }
 }
 
 bootstrap().catch((error) => {

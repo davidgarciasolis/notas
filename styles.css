@@ -215,12 +215,6 @@ textarea::placeholder {
   font-size: 0.95rem;
 }
 
-.login-status {
-  min-height: 1.2em;
-  color: var(--muted);
-  font-size: 0.95rem;
-}
-
 .login-form.is-loading .brand-mark,
 .login-panel.is-loading .brand-mark {
   animation: pulse-mark 1.4s ease-in-out infinite;
