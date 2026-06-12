@@ -219,7 +219,7 @@ function displayNoteTitle(note) {
 
 function buildNotesQuery({ page = 1, search = '' } = {}) {
   const query = new URLSearchParams({
-    fields: 'id,titulo,date_created,date_updated',
+    fields: 'id,titulo,date_updated',
     sort: '-date_updated,-date_created',
     limit: String(MAX_PAGE_SIZE),
     page: String(page)
@@ -322,7 +322,7 @@ function renderNotesList() {
     empty.style.padding = '12px 4px';
     empty.textContent = state.searchQuery.trim()
       ? 'No hay coincidencias para esa búsqueda.'
-      : 'El listado no se carga automáticamente. Usa Buscar o crea una nota.';
+      : 'Todavía no hay notas.';
     els.noteList.appendChild(empty);
     return;
   }
@@ -743,6 +743,10 @@ async function handleLoginSubmit(event) {
 
   setAuthLoading(false);
   renderAuthState();
+  void loadNotesList().catch((error) => {
+    console.error(error);
+    setStatus('No se pudo cargar el listado', 'error');
+  });
 }
 
 function wireEvents() {
@@ -806,6 +810,10 @@ async function bootstrap() {
 
   setAuthLoading(false);
   renderAuthState();
+  void loadNotesList().catch((error) => {
+    console.error(error);
+    setStatus('No se pudo cargar el listado', 'error');
+  });
 }
 
 bootstrap().catch((error) => {
