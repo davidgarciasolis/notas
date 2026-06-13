@@ -112,12 +112,19 @@ function setLoginError(message = '') {
 
 function setAuthLoading(active) {
   state.authLoading = active;
+  els.loginView.classList.toggle('is-loading', active);
+  els.loginForm.classList.toggle('is-loading', active);
+  els.loginForm.setAttribute('aria-busy', String(active));
   els.loginForm.querySelectorAll('input, button[type="submit"]').forEach((element) => {
     element.disabled = active;
   });
 }
 
 function showLogin() {
+  els.loginView.classList.remove('is-loading');
+  els.loginForm.classList.remove('is-loading');
+  els.loginForm.setAttribute('aria-busy', 'false');
+  els.appView.classList.remove('revealed');
   els.loginView.classList.remove('hidden');
   els.appView.classList.add('hidden');
 }

@@ -153,6 +153,10 @@ h3 {
   border-radius: var(--radius);
 }
 
+.login-panel.is-loading {
+  transform: translateY(-4px);
+}
+
 .login-form.is-loading {
   position: relative;
 }
@@ -165,6 +169,31 @@ h3 {
 .login-form.is-loading input,
 .login-form.is-loading button[type="submit"] {
   pointer-events: none;
+}
+
+.login-form button[type="submit"] {
+  position: relative;
+  overflow: hidden;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 46px;
+}
+
+.login-form.is-loading button[type="submit"] {
+  box-shadow: 0 14px 30px rgba(31, 111, 120, 0.28);
+}
+
+.login-form.is-loading button[type="submit"]::after {
+  content: "";
+  width: 14px;
+  height: 14px;
+  margin-left: 10px;
+  border-radius: 999px;
+  border: 2px solid rgba(255, 255, 255, 0.4);
+  border-top-color: white;
+  flex: 0 0 auto;
+  animation: login-spin 0.8s linear infinite;
 }
 
 .login-form label,
@@ -531,5 +560,11 @@ button:focus-visible {
   }
   50% {
     transform: scale(1.04);
+  }
+}
+
+@keyframes login-spin {
+  to {
+    transform: rotate(360deg);
   }
 }
