@@ -757,12 +757,15 @@ async function handleLoginSubmit(event) {
     return;
   }
 
-  setAuthLoading(false);
-  renderAuthState();
-  void loadNotesList({ selectFirst: true }).catch((error) => {
+  try {
+    await loadNotesList({ selectFirst: true });
+  } catch (error) {
     console.error(error);
     setStatus('No se pudo cargar el listado', 'error');
-  });
+  } finally {
+    setAuthLoading(false);
+    renderAuthState();
+  }
 }
 
 function wireEvents() {
@@ -829,12 +832,15 @@ async function bootstrap() {
     return;
   }
 
-  setAuthLoading(false);
-  renderAuthState();
-  void loadNotesList({ selectFirst: true }).catch((error) => {
+  try {
+    await loadNotesList({ selectFirst: true });
+  } catch (error) {
     console.error(error);
     setStatus('No se pudo cargar el listado', 'error');
-  });
+  } finally {
+    setAuthLoading(false);
+    renderAuthState();
+  }
 }
 
 bootstrap().catch((error) => {
