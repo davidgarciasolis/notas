@@ -46,6 +46,7 @@ const state = {
   saveTimers: new Map(),
   deletedNoteIds: new Set(),
   searchTimer: null,
+  notesLoadToken: 0,
   selectionToken: 0,
   refreshTimer: null
 };
@@ -88,6 +89,7 @@ function clearSession() {
   state.accessToken = null;
   state.refreshToken = null;
   state.tokenExpiresAt = 0;
+  state.notesLoadToken += 1;
   state.deletedNoteIds.clear();
   state.currentNote = null;
   localStorage.removeItem(STORAGE_KEY);
@@ -269,19 +271,26 @@ async function fetchNoteById(noteId) {
 }
 
 async function loadNotesList({ selectFirst = false } = {}) {
+  const loadToken = ++state.notesLoadToken;
   state.loadingNotes = true;
+  render();
   const search = state.searchQuery.trim();
   const searching = Boolean(search);
 
   try {
     const notes = search ? await fetchNotesPage({ page: 1, search }) : await fetchAllNotes();
     if (!state.accessToken || !state.refreshToken) return;
+    if (loadToken !== state.notesLoadToken) return;
 
     state.notes = notes;
 
     if (selectFirst && !searching && !state.selectedId && state.notes.length) {
+      if (loadToken !== state.notesLoadToken) return;
       await selectNote(state.notes[0].id, { focus: false, skipStatus: true });
+      if (loadToken !== state.notesLoadToken) return;
     }
+
+    if (loadToken !== state.notesLoadToken) return;
 
     if (!state.notes.length && !state.selectedId) {
       state.currentNote = null;
@@ -298,7 +307,10 @@ async function loadNotesList({ selectFirst = false } = {}) {
 
     render();
   } finally {
-    state.loadingNotes = false;
+    if (loadToken === state.notesLoadToken) {
+      state.loadingNotes = false;
+      render();
+    }
   }
 }
 
@@ -320,7 +332,44 @@ function sortedNoteSummaries() {
 function renderNotesList() {
   const items = state.notes;
   const scrollTop = els.noteList.scrollTop;
+  const loading = state.loadingNotes;
+  const loadingLabel = state.searchQuery.trim() ? 'Buscando...' : 'Cargando notas...';
   els.notesCount.textContent = `${items.length} nota${items.length === 1 ? '' : 's'}`;
+  els.notesCount.classList.toggle('is-loading', loading);
+  els.noteList.classList.toggle('is-loading', loading);
+  els.noteList.setAttribute('aria-busy', String(loading));
+  els.noteList.dataset.loadingLabel = loading ? loadingLabel : '';
+
+  if (loading && !items.length) {
+    els.noteList.innerHTML = '';
+    const fragment = document.createDocumentFragment();
+    for (let index = 0; index < 5; index += 1) {
+      const skeleton = document.createElement('div');
+      skeleton.className = 'note-item note-item-skeleton';
+      skeleton.setAttribute('aria-hidden', 'true');
+
+      const title = document.createElement('div');
+      title.className = 'note-title note-skeleton-line note-skeleton-line--title';
+
+      const metaRow = document.createElement('div');
+      metaRow.className = 'note-meta-row';
+
+      const date = document.createElement('span');
+      date.className = 'note-date note-skeleton-line note-skeleton-line--date';
+
+      metaRow.appendChild(date);
+      skeleton.append(title, metaRow);
+      fragment.appendChild(skeleton);
+    }
+
+    els.noteList.appendChild(fragment);
+    return;
+  }
+
+  if (loading && items.length) {
+    return;
+  }
+
   els.noteList.innerHTML = '';
 
   if (!items.length) {
