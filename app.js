@@ -6,6 +6,7 @@ const SEARCH_DEBOUNCE_MS = 350;
 const MAX_TITLE_LENGTH = 80;
 const RETRY_DELAY_MS = 5000;
 const MAX_PAGE_SIZE = 200;
+const EDITOR_TAB = '\t';
 
 const els = {
   loginView: document.getElementById('login-view'),
@@ -768,6 +769,61 @@ function handleEditorInput() {
   queueSave(state.selectedId, state.draft);
 }
 
+function replaceEditorSelection(value, selectionStart, selectionEnd) {
+  els.editor.setRangeText(value, selectionStart, selectionEnd, 'end');
+  handleEditorInput();
+}
+
+function indentEditorSelection() {
+  const { value, selectionStart, selectionEnd } = els.editor;
+  const lineStart = value.lastIndexOf('\n', selectionStart - 1) + 1;
+
+  if (selectionStart === selectionEnd) {
+    replaceEditorSelection(EDITOR_TAB, selectionStart, selectionEnd);
+    return;
+  }
+
+  const selectedText = value.slice(lineStart, selectionEnd);
+  const indentedText = selectedText.replace(/^/gm, EDITOR_TAB);
+  replaceEditorSelection(indentedText, lineStart, selectionEnd);
+  els.editor.setSelectionRange(selectionStart + EDITOR_TAB.length, lineStart + indentedText.length);
+}
+
+function outdentEditorSelection() {
+  const { value, selectionStart, selectionEnd } = els.editor;
+  const lineStart = value.lastIndexOf('\n', selectionStart - 1) + 1;
+  const selectedText = value.slice(lineStart, selectionEnd);
+  let removedBeforeSelection = 0;
+  let removedTotal = 0;
+
+  const outdentedText = selectedText.replace(/^\t|^ {1,4}/gm, (match, offset) => {
+    if (lineStart + offset < selectionStart) {
+      removedBeforeSelection += match.length;
+    }
+    removedTotal += match.length;
+    return '';
+  });
+
+  if (!removedTotal) return;
+
+  replaceEditorSelection(outdentedText, lineStart, selectionEnd);
+  els.editor.setSelectionRange(
+    Math.max(lineStart, selectionStart - removedBeforeSelection),
+    Math.max(lineStart, selectionEnd - removedTotal)
+  );
+}
+
+function handleEditorKeydown(event) {
+  if (event.key !== 'Tab') return;
+  event.preventDefault();
+
+  if (event.shiftKey) {
+    outdentEditorSelection();
+  } else {
+    indentEditorSelection();
+  }
+}
+
 function scheduleSearchReload() {
   if (state.searchTimer) {
     clearTimeout(state.searchTimer);
@@ -850,6 +906,7 @@ function wireEvents() {
     render();
   });
   els.editor.addEventListener('input', handleEditorInput);
+  els.editor.addEventListener('keydown', handleEditorKeydown);
 }
 
 async function bootstrap() {
